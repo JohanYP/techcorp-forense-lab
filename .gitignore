@@ -1,0 +1,9 @@
+# Evidencia y resultados generados por la simulación
+logs/*/*.jsonl
+simulacion/*.json
+analisis/salida/*
+!analisis/salida/.gitkeep
+!analisis/salida/figuras/
+.env
+**/__pycache__/
+.ipynb_checkpoints/

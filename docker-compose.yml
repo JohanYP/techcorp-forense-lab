@@ -1,0 +1,128 @@
+# Laboratorio de Ingeniería Forense + Big Data — "TechCorp"
+# Uso básico (ver README.md):
+#   docker compose up -d --build                 # BD + portal + Jupyter
+#   docker compose --profile simulacion run --rm generador   # datos + tráfico + incidente
+#   http://127.0.0.1:8888  (token en .env)       # notebook de análisis forense
+name: techcorp-forense
+
+x-credenciales-bd: &credenciales-bd
+  DB_HOST: db
+  DB_NAME: techcorp
+  DB_APP_USER: techcorp_app
+  DB_APP_PASSWORD: ${DB_APP_PASSWORD:-App.Portal-2026}
+  DB_ADMIN_USER: techcorp_admin
+  DB_ADMIN_PASSWORD: ${DB_ADMIN_PASSWORD:-Mant3nimiento!2023}
+  DB_FORENSE_USER: forense_ro
+  DB_FORENSE_PASSWORD: ${DB_FORENSE_PASSWORD:-Forense.Solo-Lectura}
+
+services:
+  # ---------------------------------------------------------------- base de datos
+  db:
+    image: mysql:8.4
+    container_name: techcorp-db
+    hostname: db-01
+    environment:
+      <<: *credenciales-bd
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Root.Lab-2026}
+      MYSQL_DATABASE: techcorp
+      TZ: UTC
+    # Ajustes para equipos modestos (portátil / servidor con poca RAM)
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=64M
+      - --innodb-flush-log-at-trx-commit=2
+      - --skip-log-bin
+      - --max-connections=150
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 40s
+    networks: [lab]
+    restart: unless-stopped
+
+  # ------------------------------------------- portal web (PHP 8.3.30 + Apache)
+  portal:
+    build: ./portal
+    image: techcorp/portal:php8.3.30
+    container_name: techcorp-portal
+    hostname: web-01
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *credenciales-bd
+      LAB_MODE: "1"                     # habilita reloj simulado y el simulador del incidente
+      LAB_EXPLOIT_ATTEMPTS: ${LAB_EXPLOIT_ATTEMPTS:-19}
+      TZ: UTC
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${PORTAL_PORT:-8080}:80"
+    volumes:
+      - ./logs:/var/log/techcorp        # evidencia: web/, app/, db/, fim/
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [lab]
+    restart: unless-stopped
+
+  # ------------------------------------- generador de datos + tráfico (Big Data)
+  generador:
+    build: ./generador
+    image: techcorp/generador:1.0
+    profiles: ["simulacion"]            # no arranca con "up"; se ejecuta con "run"
+    depends_on:
+      portal:
+        condition: service_healthy
+    environment:
+      <<: *credenciales-bd
+      PORTAL_URL: http://portal
+      SIM_INICIO: ${SIM_INICIO:-2026-11-03T00:00:00-05:00}
+      SIM_DIAS: ${SIM_DIAS:-7}
+      INCIDENTE_INICIO: ${INCIDENTE_INICIO:-2026-11-06T01:52:00-05:00}
+      HILOS: ${HILOS:-12}
+      ESCALA: ${ESCALA:-1.0}
+      SEMILLA: ${SEMILLA:-2026}
+      LAB_PASSWORD: ${LAB_PASSWORD:-TechCorp2026*}
+    volumes:
+      - ./simulacion:/salida            # solucionario del incidente (para el docente)
+    user: "${UID:-1000}:${GID:-1000}"
+    networks: [lab]
+
+  # --------------------------------------- análisis forense (Jupyter + DuckDB)
+  analisis:
+    build: ./analisis
+    image: techcorp/analisis:1.0
+    container_name: techcorp-jupyter
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *credenciales-bd
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-forense2026}
+      EVIDENCIA: /evidencia/logs
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${JUPYTER_PORT:-8888}:8888"
+    volumes:
+      - ./logs:/evidencia/logs:ro                  # evidencia en SOLO LECTURA
+      - ./analisis/notebooks:/home/analista/notebooks
+      - ./analisis/contexto:/home/analista/contexto:ro
+      - ./analisis/salida:/home/analista/salida
+      - ./simulacion:/home/analista/solucionario:ro
+    user: "${UID:-1000}:${GID:-1000}"
+    networks: [lab]
+    restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  lab:
+    name: techcorp-lab

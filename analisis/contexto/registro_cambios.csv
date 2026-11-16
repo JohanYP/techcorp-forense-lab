@@ -1,0 +1,4 @@
+id_cambio,fecha_inicio_local,fecha_fin_local,ip_origen,descripcion,aprobado_por
+CAB-2026-114,2026-11-03T02:30:00-05:00,2026-11-03T04:30:00-05:00,10.10.5.20,Escaneo trimestral de vulnerabilidades del portal interno (SOC),Comité de cambios TI
+CAB-2026-117,2026-11-04T09:00:00-05:00,2026-11-04T12:00:00-05:00,10.10.3.0/24,Cierre de cartera: exportación de base de clientes para conciliación (Finanzas),Dirección financiera
+CAB-2026-121,2026-11-09T16:00:00-05:00,2026-11-09T18:00:00-05:00,10.10.6.0/24,Informe mensual de gerencia: exportación de clientes,Gerencia general
