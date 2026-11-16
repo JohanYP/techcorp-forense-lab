@@ -14,5 +14,6 @@ WORKDIR /home/analista
 EXPOSE 8888
 ENTRYPOINT ["tini", "--"]
 COPY espacio_presentacion.json /opt/techcorp/espacio_presentacion.json
-COPY --chmod=0755 iniciar.sh /opt/techcorp/iniciar.sh
-CMD ["/opt/techcorp/iniciar.sh"]
+COPY iniciar.sh /opt/techcorp/iniciar.sh
+# "sh" explícito: no depende del permiso de ejecución (COPY --chmod exige BuildKit).
+CMD ["sh", "/opt/techcorp/iniciar.sh"]
