@@ -55,11 +55,14 @@ def simular(forzar: bool) -> None:
 
     verdad: dict = {}
     sem_inc = rnd.getrandbits(32)
+    # SIN_INCIDENTE=1 → genera solo la semana de tráfico de fondo (el incidente lo inyecta
+    # luego el notebook 00_ataque_en_vivo.ipynb, para poder explicar el ataque paso a paso).
+    sin_incidente = os.environ.get("SIN_INCIDENTE") == "1"
 
     def correr_incidente() -> None:
         verdad.update(incidente.ejecutar(CFG.incidente_inicio, sem_inc))
 
-    if CFG.sim_inicio <= CFG.incidente_inicio < CFG.sim_fin:
+    if not sin_incidente and CFG.sim_inicio <= CFG.incidente_inicio < CFG.sim_fin:
         trabajos.append(trafico.Trabajo(CFG.incidente_inicio, "INCIDENTE", correr_incidente))
 
     por_dia: dict = defaultdict(list)
@@ -68,7 +71,8 @@ def simular(forzar: bool) -> None:
 
     print(f"· Simulación: {CFG.sim_inicio:%Y-%m-%d %H:%M} → {CFG.sim_fin:%Y-%m-%d %H:%M} (UTC-5), "
           f"{len(trabajos)} trabajos, {CFG.hilos} hilos, escala {CFG.escala}")
-    print(f"· Incidente programado: {CFG.incidente_inicio:%Y-%m-%d %H:%M} (UTC-5)")
+    print("· Incidente: lo inyectará el notebook en vivo (SIN_INCIDENTE=1)" if sin_incidente
+          else f"· Incidente programado: {CFG.incidente_inicio:%Y-%m-%d %H:%M} (UTC-5)")
     t_ini = time.time()
 
     def seguro(tr: trafico.Trabajo) -> None:

@@ -2,7 +2,8 @@
 
 Fases (hora de Colombia, por defecto viernes 2026-11-06 de madrugada):
   1. Reconocimiento  — navegación, robots.txt y enumeración de rutas (gobuster).
-  2. Explotación     — ráfaga de POST multipart a /login.php con PHP_SESSION_UPLOAD_PROGRESS
+  2. Explotación     — ráfaga de POST multipart a /empleados/foto.php (la página real de
+ *                       subir foto de perfil) con el campo PHP_SESSION_UPLOAD_PROGRESS
                        hasta que "aparece" la webshell en /uploads/avatars/.
   3. Post-explotación — órdenes de reconocimiento a través de la webshell (en Base64).
   4. Escalada y consulta masiva — lee config/database.php, usa la cuenta techcorp_admin y
@@ -63,11 +64,11 @@ def ejecutar(t0: datetime, semilla: int) -> dict:
         t += timedelta(seconds=r.uniform(20, 40))
         nav.get("/robots.txt", t)
         t += timedelta(seconds=r.uniform(50, 80))
-        for p in lista_rutas(r, 380) + ["/uploads/avatars/", "/legacy/status.php", "/api/health.php", "/login.php"]:
+        for p in lista_rutas(r, 380) + ["/uploads/avatars/", "/legacy/status.php", "/api/health.php", "/empleados/foto.php"]:
             t += timedelta(milliseconds=r.randint(40, 140))  # gobuster: ~10 peticiones por segundo
             gob.get(p, t)
         t += timedelta(minutes=r.uniform(3, 5))
-        tool.get("/login.php", t)  # huella de versión: X-Powered-By: PHP/8.3.30
+        tool.get("/empleados/foto.php", t)  # huella de versión: X-Powered-By: PHP/8.3.30
         fase("1_reconocimiento", ini, t)
 
         # ------------------------------------------------------- 2. explotación
@@ -78,9 +79,9 @@ def ejecutar(t0: datetime, semilla: int) -> dict:
             intentos = i
             sid = "".join(r.choices(string.ascii_lowercase + string.digits, k=26))
             relleno = r.randbytes(r.randint(300_000, 900_000))
-            resp = tool.post("/login.php", t,
+            resp = tool.post("/empleados/foto.php", t,
                              data={"PHP_SESSION_UPLOAD_PROGRESS": "".join(r.choices(string.ascii_letters, k=48))},
-                             files={"f": ("blob.bin", relleno, "application/octet-stream")},
+                             files={"foto": ("perfil.jpg", relleno, "image/jpeg")},
                              cookies={"PHPSESSID": sid})
             t += timedelta(seconds=r.uniform(1.5, 3.5))
             if resp.status_code != 500 or i % 4 == 0:

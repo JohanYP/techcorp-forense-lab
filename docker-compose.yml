@@ -90,6 +90,7 @@ services:
       HILOS: ${HILOS:-12}
       ESCALA: ${ESCALA:-1.0}
       SEMILLA: ${SEMILLA:-2026}
+      SIN_INCIDENTE: ${SIN_INCIDENTE:-}
       LAB_PASSWORD: ${LAB_PASSWORD:-TechCorp2026*}
     volumes:
       - ./simulacion:/salida            # solucionario del incidente (para el docente)

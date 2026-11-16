@@ -56,13 +56,17 @@ cp .env.example .env
 docker compose up -d --build
 docker compose ps                     # db y portal deben quedar "healthy"
 
-# 2) Poblar la BD y simular la semana con el incidente (≈ 6–7 min en un portátil de 2 núcleos)
+# 2) Poblar la BD y simular la semana (≈ 6–7 min en un portátil de 2 núcleos)
+#    Opción A — todo de una vez, con el ataque ya incluido:
 docker compose --profile simulacion run --rm generador
-#    Prueba rápida (≈ 2 min, unas 70 000 líneas):
-#    ESCALA=0.3 docker compose --profile simulacion run --rm generador
+#    Opción B — modo presentación: solo la semana normal; el ataque lo lanza usted en vivo (ver abajo):
+#    SIN_INCIDENTE=1 docker compose --profile simulacion run --rm generador
+#    Prueba rápida (≈ 2 min):  ESCALA=0.3 docker compose --profile simulacion run --rm generador
 
 # 3) Análisis forense en el navegador
-#    http://127.0.0.1:8888/lab?token=forense2026   → notebooks/analisis_forense.ipynb → «Run All»
+#    http://127.0.0.1:8888/lab?token=forense2026
+#    Ataque paso a paso (opción B):  notebooks/00_ataque_en_vivo.ipynb
+#    Análisis forense:               notebooks/analisis_forense.ipynb  → «Run All»
 
 #    …o sin navegador: ejecutar el notebook y exportarlo a HTML para la presentación
 docker compose exec analisis jupyter nbconvert --to notebook --execute --inplace notebooks/analisis_forense.ipynb
@@ -72,6 +76,17 @@ docker compose exec analisis jupyter nbconvert --to html --output-dir salida not
 * **Portal** (para mostrarlo en vivo): <http://127.0.0.1:8080>, usuario `demo`, contraseña `TechCorp2026*`. Cualquier otro empleado de la tabla `empleados` entra con la misma contraseña.
 * **Figuras listas para diapositivas** (PNG a 200 ppp): `analisis/salida/figuras/`.
 * **Resultados del caso**: `analisis/salida/` contiene `cadena_custodia.csv`, `super_timeline.csv`, `iocs.json`, `registros_expuestos_*.csv`, el *data lake* Parquet (`lake/`) y `analisis_forense.html`.
+
+### Modo presentación: el ataque paso a paso (en vivo)
+
+Para explicar el ataque mientras ocurre, en lugar de que el generador lo inyecte de golpe:
+
+```bash
+./reiniciar_laboratorio.sh                                            # entorno limpio
+SIN_INCIDENTE=1 docker compose --profile simulacion run --rm generador   # solo la semana normal
+```
+
+Luego, en Jupyter (<http://127.0.0.1:8888/lab?token=forense2026>), abra **`notebooks/00_ataque_en_vivo.ipynb`** y ejecute una celda a la vez: usted hace de atacante y entra por la página de subir la foto de perfil (`/empleados/foto.php`), deja la puerta trasera y roba la base de datos, viendo cada paso. Después abra **`analisis_forense.ipynb`** y reconstruya lo que acaba de hacer. El ataque es una **simulación controlada** (el portal reconoce el patrón; no hay exploit real) y es **repetible**: el notebook limpia el estado al empezar.
 
 ### Demostración en vivo (opcional)
 
@@ -122,6 +137,7 @@ techcorp-forense-lab/
 ├── generador/                     # Python: poblar_bd.py, trafico.py, incidente.py, main.py
 ├── analisis/
 │   ├── Dockerfile, requirements.txt
+│   ├── notebooks/00_ataque_en_vivo.ipynb   # el ataque paso a paso (opcional, modo presentación)
 │   ├── notebooks/analisis_forense.ipynb
 │   ├── contexto/                  # registro de cambios (CAB) e inventario de red de TechCorp
 │   └── salida/                    # resultados (figuras, Parquet, IOC, CSV, HTML)
@@ -137,7 +153,7 @@ Todas en **JSON Lines** (un evento por línea), con la hora en **UTC** (`...Z`).
 
 **`logs/web/access.jsonl`**: registro de acceso de Apache (formato `LogFormat` personalizado):
 ```json
-{"ts":"2026-11-06T07:03:28.986Z","server":"web-01","vhost":"portal.techcorp.local","request_id":"avtHHErIKu1KPmYJyqwPHQAAAAI","client_ip":"203.0.113.66","method":"POST","uri":"/login.php","query":"","protocol":"HTTP/1.1","status":500,"bytes_sent":211,"bytes_received":387027,"duration_us":40004,"content_type":"multipart/form-data; boundary=9e5b4715…","user_agent":"python-requests/2.32.3","referer":"-","user":"-"}
+{"ts":"2026-11-06T07:03:28.986Z","server":"web-01","vhost":"portal.techcorp.local","request_id":"avtijs4te4uLtdrGyZIEUwAAAAA","client_ip":"203.0.113.66","method":"POST","uri":"/empleados/foto.php","query":"","protocol":"HTTP/1.1","status":500,"bytes_sent":211,"bytes_received":387027,"duration_us":40004,"content_type":"multipart/form-data; boundary=9e5b4715…","user_agent":"python-requests/2.32.3","referer":"-","user":"-"}
 ```
 
 **`logs/app/app.jsonl`**: eventos de la aplicación (`login_success`, `login_failed`, `access_denied`, `not_found`, `php_error`, `export_generated`, `child_crash`…):
@@ -175,7 +191,7 @@ Todas en **JSON Lines** (un evento por línea), con la hora en **UTC** (`...Z`).
 
 ### El incidente (viernes 06/11 de madrugada) · *spoiler*
 1. **Reconocimiento** (01:52): navegación, `robots.txt` y ~380 rutas con `gobuster/3.6` desde **203.0.113.66**.
-2. **Explotación** (~02:04): ráfaga de **POST multipart a `/login.php`** con el campo `PHP_SESSION_UPLOAD_PROGRESS` y cuerpos de 300–900 KB (el patrón de PHP2Shell). Los procesos de Apache «se caen» (500 + `AH00052 Segmentation fault`) hasta que al intento 19 aparece **`/uploads/avatars/thumb_8f3a.php`** (FIM).
+2. **Explotación** (~02:04): ráfaga de **subidas de archivo a `/empleados/foto.php`** (la página de la foto de perfil) con el campo `PHP_SESSION_UPLOAD_PROGRESS` y cuerpos de 300–900 KB (el patrón de PHP2Shell). Como la falla está en PHP y no en la aplicación, **se dispara antes de iniciar sesión**. Los procesos de Apache «se caen» (500 + `AH00052 Segmentation fault`) hasta que al intento 19 aparece **`/uploads/avatars/thumb_8f3a.php`** (FIM).
 3. **Post-explotación**: órdenes en Base64 por la webshell (`id`, `uname -a`, `ls`, `cat config/database.php`).
 4. **Escalada y consulta masiva**: con las credenciales de **`techcorp_admin`** leídas del archivo de configuración, vuelca **las 2000 filas de `clientes`** (en 4 bloques) y **los 500 empleados** (incluidos salario y hash de contraseña) a `/tmp/.d/`.
 5. **Exfiltración**: comprime los volcados y el docroot (código y fotos de perfil) y los descarga desde **otra IP, 203.0.113.67** (`curl`).
@@ -193,7 +209,7 @@ Todas en **JSON Lines** (un evento por línea), con la hora en **UTC** (`...Z`).
 | 2. Ingesta Big Data | DuckDB `read_json` con esquema explícito, data lake Parquet/ZSTD particionado, comparación de tamaño y velocidad | — |
 | 3. Línea base | Volumen por día y hora, códigos de estado, endpoints | `fig01_mapa_calor_actividad.png` |
 | 4. Anomalías | Perfil por IP, **z robusto** (mediana/MAD) + **Isolation Forest**, ráfagas de 404, respuestas fuera del p99, **triage** contra el registro de cambios | `fig02_bytes_enviados.png`, `fig03_ips_anomalas.png` |
-| 5. Vector de entrada | POST multipart anómalos, **ASOF JOIN** con las caídas de Apache, URI nuevas, evento FIM | — |
+| 5. Vector de entrada | Subidas de archivo anómalas en la página de la foto, **ASOF JOIN** con las caídas de Apache, URI nuevas, evento FIM | — |
 | 6. Post-explotación | Decodificación Base64 de las órdenes de la webshell y mapeo a **MITRE ATT&CK** | — |
 | 7. Web ↔ BD | `request_id` extraído del SQL (*sqlcommenter*), uso anómalo de `techcorp_admin`, **registros exactos expuestos** y validación por **reproducción** de las consultas con `forense_ro` | `fig04_bd_filas_por_cuenta.png`, `fig05_clientes_expuestos.png` |
 | 8. Exfiltración | Bytes por IP y archivo, pivote por artefacto (no solo por IP) | — |
