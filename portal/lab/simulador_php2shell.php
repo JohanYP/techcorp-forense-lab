@@ -5,7 +5,7 @@
  * Qué NO hace: no corrompe memoria, no ejecuta código enviado por el cliente y no contiene
  * ningún exploit. Solo reproduce la HUELLA que deja un ataque de este tipo:
  *
- *   1. Ráfaga de POST multipart sin autenticar contra un script PHP público (/login.php) que
+ *   1. Ráfaga de POST multipart sin autenticar contra la página de subir la foto de perfil (/empleados/foto.php) que
  *      incluyen el campo PHP_SESSION_UPLOAD_PROGRESS (seguimiento de progreso de subida de
  *      la sesión, la vía de ataque descrita para PHP2Shell) y cuerpos inusualmente grandes.
  *   2. Mientras el "exploit" no acierta, el proceso hijo de Apache "se cae": respuesta 500 y
