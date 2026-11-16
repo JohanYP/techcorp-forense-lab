@@ -1,0 +1,25 @@
+{
+  "data": {
+    "layout-restorer:data": {
+      "main": {
+        "dock": {
+          "type": "tab-area",
+          "currentIndex": 0,
+          "widgets": [
+            "notebook:notebooks/00_ataque_en_vivo.ipynb",
+            "notebook:notebooks/analisis_forense.ipynb"
+          ]
+        },
+        "current": "notebook:notebooks/00_ataque_en_vivo.ipynb"
+      },
+      "down": {"size": 0, "widgets": []},
+      "left": {"collapsed": true, "visible": true, "widgets": ["filebrowser", "running-sessions", "@jupyterlab/toc-extension:plugin"]},
+      "right": {"collapsed": true, "visible": true, "widgets": []},
+      "relativeSizes": [0, 1, 0]
+    },
+    "notebook:notebooks/00_ataque_en_vivo.ipynb": {"data": {"path": "notebooks/00_ataque_en_vivo.ipynb", "factory": "Notebook"}},
+    "notebook:notebooks/analisis_forense.ipynb": {"data": {"path": "notebooks/analisis_forense.ipynb", "factory": "Notebook"}},
+    "file-browser-filebrowser:cwd": {"path": "notebooks"}
+  },
+  "metadata": {"id": "default"}
+}

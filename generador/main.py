@@ -40,6 +40,10 @@ def esperar_portal() -> dict:
 
 def simular(forzar: bool) -> None:
     estado = esperar_portal()
+    if estado.get("linea_base") and not forzar:
+        print(f"✔ El laboratorio ya está preparado (semana simulada el {estado['linea_base'].get('guardada_utc')} UTC). "
+              "Nada que hacer.\n  Para empezar desde cero: ./reiniciar_laboratorio.sh")
+        return
     if estado.get("webshell") and not forzar:
         raise SystemExit(
             "✖ Este entorno YA contiene un incidente simulado (existe la webshell).\n"
@@ -58,6 +62,10 @@ def simular(forzar: bool) -> None:
     # SIN_INCIDENTE=1 → genera solo la semana de tráfico de fondo (el incidente lo inyecta
     # luego el notebook 00_ataque_en_vivo.ipynb, para poder explicar el ataque paso a paso).
     sin_incidente = os.environ.get("SIN_INCIDENTE") == "1"
+    if sin_incidente:  # un solucionario viejo (de otra simulación) no corresponde al ataque en vivo
+        viejo = os.path.join(CFG.salida, "solucionario_incidente.json")
+        if os.path.exists(viejo):
+            os.remove(viejo)
 
     def correr_incidente() -> None:
         verdad.update(incidente.ejecutar(CFG.incidente_inicio, sem_inc))
@@ -99,6 +107,14 @@ def simular(forzar: bool) -> None:
     total = time.time() - t_ini
     print(f"✔ {STATS.peticiones:,} peticiones HTTP en {total / 60:.1f} min · {STATS.bytes / 1e6:,.1f} MB · "
           f"códigos {dict(sorted(STATS.estados.items()))} · trabajos con error: {STATS.errores}")
+
+    # Línea base de la evidencia: el notebook del ataque en vivo recorta los logs a este punto
+    # antes de atacar, para que siempre haya UN solo incidente aunque se repita la demostración.
+    r = requests.post(CFG.portal_url + "/_lab/linea_base.php", timeout=10)
+    r.raise_for_status()
+    print(f"✔ Línea base de la evidencia guardada: {r.json()['tamanos']}")
+    if sin_incidente:
+        print("✔ Listo para la presentación: abra Jupyter y ejecute notebooks/00_ataque_en_vivo.ipynb")
 
     if verdad:
         verdad["falsas_alarmas"] = {"exportaciones_legitimas": reg_export, "escaneos": reg_escaneos,

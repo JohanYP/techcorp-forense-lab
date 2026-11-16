@@ -33,7 +33,7 @@ flowchart LR
 |---|---|---|
 | `db` | `mysql:8.4` | Base de datos `techcorp` (tablas `empleados`, `clientes`, `tickets`) con tres cuentas: `techcorp_app` (portal, mínimo privilegio), `techcorp_admin` (mantenimiento heredado) y `forense_ro` (solo lectura, para el analista). |
 | `portal` | `php:8.3.30-apache` | Portal interno: login, clientes, directorio, tickets, reportes y exportación CSV. Registra **cada petición, error, sentencia SQL y cambio de archivos** en JSON. |
-| `generador` | `python:3.12-slim` | Puebla la BD y simula 7 días de uso por parte de los empleados, el ruido y las falsas alarmas, e inyecta el incidente. Se ejecuta bajo demanda (perfil `simulacion`). |
+| `generador` | `python:3.12-slim` | Puebla la BD y simula 7 días de uso por parte de los empleados, el ruido y las falsas alarmas, y guarda la línea base de los logs. Corre una sola vez con `docker compose up` y termina; Jupyter espera a que acabe. |
 | `analisis` | `python:3.12-slim` | Jupyter Lab con **DuckDB** (motor SQL columnar), Pandas, scikit-learn (Isolation Forest), Matplotlib y Seaborn. Monta la evidencia **en solo lectura**. |
 
 > **¿Por qué DuckDB y no PySpark/ELK?** Con 2 núcleos y unos GB de RAM, DuckDB procesa estos cientos de miles de eventos (y también millones) en segundos sin la JVM ni un clúster. Lee JSON y Parquet de forma paralela y vectorizada, y el SQL del notebook se traslada casi sin cambios a Spark SQL si el volumen creciera a terabytes. Ver [Escalar a PySpark](#escalar-a-pyspark-opcional).
@@ -46,47 +46,56 @@ flowchart LR
 * ~3 GB de disco para imágenes y ~2 GB de RAM libre mientras corre la simulación.
 * Puertos libres en `127.0.0.1`: **8080** (portal) y **8888** (Jupyter). Se cambian en `.env`.
 
-## Puesta en marcha (comandos exactos)
+## Puesta en marcha (dos comandos)
 
 ```bash
-# 0) (Opcional) Ajustar puertos, contraseñas o el tamaño de la simulación
-cp .env.example .env
+cp .env.example .env              # valores por defecto listos; ajuste puertos o tamaño si quiere
+docker compose up -d --build      # ≈ 5–8 min la primera vez en un portátil de 2 núcleos
+```
 
-# 1) Construir y levantar BD + portal + Jupyter
-docker compose up -d --build
-docker compose ps                     # db y portal deben quedar "healthy"
+Eso es todo. `up` hace, en orden:
 
-# 2) Poblar la BD y simular la semana (≈ 6–7 min en un portátil de 2 núcleos)
-#    Opción A — todo de una vez, con el ataque ya incluido:
-docker compose --profile simulacion run --rm generador
-#    Opción B — modo presentación: solo la semana normal; el ataque lo lanza usted en vivo (ver abajo):
-#    SIN_INCIDENTE=1 docker compose --profile simulacion run --rm generador
-#    Prueba rápida (≈ 2 min):  ESCALA=0.3 docker compose --profile simulacion run --rm generador
+1. Levanta la base de datos (`db`) y el portal (`portal`) y espera a que estén *healthy*.
+2. Corre el **generador** una sola vez: puebla la BD con Faker, simula la semana normal de tráfico (sin el ataque, porque `SIN_INCIDENTE=1` viene por defecto), guarda la **línea base** de los logs y termina.
+3. Levanta **Jupyter** solo cuando el generador terminó bien. Cuando el comando devuelve el control, todo está listo.
 
-# 3) Análisis forense en el navegador
-#    http://127.0.0.1:8888/lab?token=forense2026
-#    Ataque paso a paso (opción B):  notebooks/00_ataque_en_vivo.ipynb
-#    Análisis forense:               notebooks/analisis_forense.ipynb  → «Run All»
+Si se vuelve a ejecutar `docker compose up -d` (por ejemplo, después de reiniciar el equipo), el generador detecta que el laboratorio ya está preparado y sale en un segundo, sin volver a simular.
 
-#    …o sin navegador: ejecutar el notebook y exportarlo a HTML para la presentación
+Luego abra en el navegador (Docker no puede abrirlo por usted; guárdelas como marcadores):
+
+| Qué | Dirección | Acceso |
+|---|---|---|
+| **Jupyter** (los dos notebooks ya abiertos en pestañas) | <http://127.0.0.1:8888/lab?token=forense2026> | token `JUPYTER_TOKEN` del `.env` |
+| **Portal** de TechCorp | <http://127.0.0.1:8080> | usuario `demo`, contraseña `TechCorp2026*` (cualquier empleado entra con esa misma contraseña) |
+
+```bash
+docker compose ps                     # db y portal "healthy"; generador "exited (0)"; analisis "running"
+docker compose logs generador         # progreso y resumen de la simulación
+```
+
+* **Figuras listas para diapositivas** (PNG a 200 ppp): `analisis/salida/figuras/`.
+* **Resultados del caso**: `analisis/salida/` contiene `cadena_custodia.csv`, `super_timeline.csv`, `iocs.json`, `registros_expuestos_*.csv`, el *data lake* Parquet (`lake/`) y `analisis_forense.html`.
+* **Prueba rápida** (≈ 2 min): ponga `ESCALA=0.3` en `.env` antes del `up`.
+
+### La presentación: notebook por notebook
+
+Todo lo demás se hace desde Jupyter, ejecutando **una celda a la vez** (`Shift + Enter`) mientras explica:
+
+1. **`notebooks/00_ataque_en_vivo.ipynb`**: usted hace de atacante. Entra por la página de subir la foto de perfil (`/empleados/foto.php`), deja la puerta trasera y roba la base de datos, y en cada paso ve qué es real, qué es simulado y qué huella quedó en los logs. El ataque es una **simulación controlada** (el portal reconoce el patrón; no hay exploit real).
+2. **`notebooks/analisis_forense.ipynb`**: el ingeniero forense reconstruye lo que usted acaba de hacer, solo con los logs.
+
+**Se puede repetir cuantas veces quiera.** La primera celda del notebook del ataque borra la puerta trasera de la corrida anterior y **recorta los logs a la línea base** (la semana normal, guardada en `logs/.linea_base.json`), así que el forense siempre ve **un solo ataque**.
+
+Sin navegador, el notebook forense también se puede ejecutar y exportar a HTML (después de hacer el ataque):
+
+```bash
 docker compose exec analisis jupyter nbconvert --to notebook --execute --inplace notebooks/analisis_forense.ipynb
 docker compose exec analisis jupyter nbconvert --to html --output-dir salida notebooks/analisis_forense.ipynb
 ```
 
-* **Portal** (para mostrarlo en vivo): <http://127.0.0.1:8080>, usuario `demo`, contraseña `TechCorp2026*`. Cualquier otro empleado de la tabla `empleados` entra con la misma contraseña.
-* **Figuras listas para diapositivas** (PNG a 200 ppp): `analisis/salida/figuras/`.
-* **Resultados del caso**: `analisis/salida/` contiene `cadena_custodia.csv`, `super_timeline.csv`, `iocs.json`, `registros_expuestos_*.csv`, el *data lake* Parquet (`lake/`) y `analisis_forense.html`.
+### Variante sin notebook en vivo
 
-### Modo presentación: el ataque paso a paso (en vivo)
-
-Para explicar el ataque mientras ocurre, en lugar de que el generador lo inyecte de golpe:
-
-```bash
-./reiniciar_laboratorio.sh                                            # entorno limpio
-SIN_INCIDENTE=1 docker compose --profile simulacion run --rm generador   # solo la semana normal
-```
-
-Luego, en Jupyter (<http://127.0.0.1:8888/lab?token=forense2026>), abra **`notebooks/00_ataque_en_vivo.ipynb`** y ejecute una celda a la vez: usted hace de atacante y entra por la página de subir la foto de perfil (`/empleados/foto.php`), deja la puerta trasera y roba la base de datos, viendo cada paso. Después abra **`analisis_forense.ipynb`** y reconstruya lo que acaba de hacer. El ataque es una **simulación controlada** (el portal reconoce el patrón; no hay exploit real) y es **repetible**: el notebook limpia el estado al empezar.
+Si prefiere que el generador inyecte también el ataque (y deje el solucionario en `simulacion/`), deje vacío `SIN_INCIDENTE=` en `.env` **antes** del primer `up` (o tras `./reiniciar_laboratorio.sh`). En esa variante no use `00_ataque_en_vivo.ipynb`: se sumaría un segundo ataque a los logs.
 
 ### Demostración en vivo (opcional)
 
@@ -102,11 +111,12 @@ grep -c '"db_user":"techcorp_admin"' logs/db/audit.jsonl
 ### Repetir desde cero
 
 ```bash
-./reiniciar_laboratorio.sh            # borra contenedores, BD, logs y resultados y vuelve a levantar
-docker compose --profile simulacion run --rm generador
+./reiniciar_laboratorio.sh            # borra contenedores, BD, logs y resultados, y vuelve a preparar todo
 ```
 
-> **No borre `logs/*.jsonl` con el portal encendido.** Apache mantiene el archivo abierto y seguiría escribiendo en el archivo eliminado, de modo que la evidencia se perdería. El script anterior lo hace en el orden correcto.
+El script deja el laboratorio como recién instalado y ejecuta `docker compose up -d --build`, que vuelve a simular la semana. Para repetir **solo el ataque** no hace falta: basta con volver a ejecutar `00_ataque_en_vivo.ipynb` desde el principio.
+
+> **No borre `logs/*.jsonl` con el portal encendido.** Apache mantiene el archivo abierto y seguiría escribiendo en el archivo eliminado, de modo que la evidencia se perdería. El script lo hace en el orden correcto.
 
 ### Apagar
 
@@ -132,16 +142,19 @@ techcorp-forense-lab/
 │   ├── lab/                       # andamiaje del laboratorio (fuera del docroot)
 │   │   ├── bootstrap.php          #   reloj simulado, log JSON, manejador de errores
 │   │   ├── simulador_php2shell.php#   huella del exploit (sin exploit)
-│   │   └── webshell_simulada.php  #   órdenes de un conjunto cerrado, sin ejecución real
+│   │   ├── webshell_simulada.php  #   órdenes de un conjunto cerrado, sin ejecución real
+│   │   └── linea_base.php         #   guarda/restaura la línea base de los logs (ataque repetible)
 │   └── www/                       # la aplicación: login, clientes, empleados, tickets, reportes…
 ├── generador/                     # Python: poblar_bd.py, trafico.py, incidente.py, main.py
 ├── analisis/
 │   ├── Dockerfile, requirements.txt
+│   ├── iniciar.sh, espacio_presentacion.json  # arranque de Jupyter con los dos notebooks abiertos
 │   ├── notebooks/00_ataque_en_vivo.ipynb   # el ataque paso a paso (opcional, modo presentación)
 │   ├── notebooks/analisis_forense.ipynb
 │   ├── contexto/                  # registro de cambios (CAB) e inventario de red de TechCorp
 │   └── salida/                    # resultados (figuras, Parquet, IOC, CSV, HTML)
 ├── logs/{web,app,db,fim}/         # EVIDENCIA (se genera al simular)
+├── logs/.linea_base.json          # tamaño de los logs al terminar la semana normal
 └── simulacion/                    # solucionario_incidente.json (solo para el docente)
 ```
 
@@ -248,6 +261,7 @@ Todas en **JSON Lines** (un evento por línea), con la hora en **UTC** (`...Z`).
 | `ESCALA` | `1.0` | Proporción de empleados activos (0.3 = prueba rápida) |
 | `HILOS` | `12` | Hilos del generador |
 | `SEMILLA` | `2026` | Semilla de Faker y de la simulación (reproducible) |
+| `SIN_INCIDENTE` | `1` | `1` = solo la semana normal (el ataque se hace desde el notebook en vivo); vacío = el generador también inyecta el ataque |
 | `LAB_EXPLOIT_ATTEMPTS` | `19` | Intentos que «necesita» el exploit simulado |
 
 > Si cambia las fechas, actualice también `analisis/contexto/registro_cambios.csv` (las falsas alarmas autorizadas).

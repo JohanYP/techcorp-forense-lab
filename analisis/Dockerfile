@@ -13,4 +13,6 @@ RUN mkdir -p /home/analista/notebooks /home/analista/salida /evidencia/logs \
 WORKDIR /home/analista
 EXPOSE 8888
 ENTRYPOINT ["tini", "--"]
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.root_dir=/home/analista", "--ServerApp.default_url=/lab/tree/notebooks/analisis_forense.ipynb"]
+COPY espacio_presentacion.json /opt/techcorp/espacio_presentacion.json
+COPY --chmod=0755 iniciar.sh /opt/techcorp/iniciar.sh
+CMD ["/opt/techcorp/iniciar.sh"]

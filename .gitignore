@@ -1,5 +1,6 @@
 # Evidencia y resultados generados por la simulación
 logs/*/*.jsonl
+logs/.linea_base.json
 simulacion/*.json
 analisis/salida/*
 !analisis/salida/.gitkeep

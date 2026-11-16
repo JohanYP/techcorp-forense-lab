@@ -1,8 +1,9 @@
 # Laboratorio de Ingeniería Forense + Big Data — "TechCorp"
-# Uso básico (ver README.md):
-#   docker compose up -d --build                 # BD + portal + Jupyter
-#   docker compose --profile simulacion run --rm generador   # datos + tráfico + incidente
-#   http://127.0.0.1:8888  (token en .env)       # notebook de análisis forense
+# Uso (ver README.md):
+#   cp .env.example .env
+#   docker compose up -d --build     # BD + portal + semana simulada + Jupyter (≈ 5-8 min la 1.ª vez)
+#   http://127.0.0.1:8888/lab?token=forense2026   → los dos notebooks ya abiertos
+#   http://127.0.0.1:8080                          → el portal (demo / TechCorp2026*)
 name: techcorp-forense
 
 x-credenciales-bd: &credenciales-bd
@@ -77,7 +78,9 @@ services:
   generador:
     build: ./generador
     image: techcorp/generador:1.0
-    profiles: ["simulacion"]            # no arranca con "up"; se ejecuta con "run"
+    # Corre solo con "up": puebla la BD y simula la semana normal (una sola vez; si el
+    # laboratorio ya está preparado, sale en un segundo) y termina.
+    restart: "no"
     depends_on:
       portal:
         condition: service_healthy
@@ -90,7 +93,7 @@ services:
       HILOS: ${HILOS:-12}
       ESCALA: ${ESCALA:-1.0}
       SEMILLA: ${SEMILLA:-2026}
-      SIN_INCIDENTE: ${SIN_INCIDENTE:-}
+      SIN_INCIDENTE: ${SIN_INCIDENTE-1}   # 1 = el ataque lo hace usted en vivo desde el notebook
       LAB_PASSWORD: ${LAB_PASSWORD:-TechCorp2026*}
     volumes:
       - ./simulacion:/salida            # solucionario del incidente (para el docente)
@@ -105,8 +108,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      generador:                        # Jupyter abre cuando la semana simulada ya está lista
+        condition: service_completed_successfully
     environment:
       <<: *credenciales-bd
+      PORTAL_PORT: ${PORTAL_PORT:-8080} # para mostrar el portal dentro del notebook
       JUPYTER_TOKEN: ${JUPYTER_TOKEN:-forense2026}
       EVIDENCIA: /evidencia/logs
     ports:
@@ -116,7 +122,7 @@ services:
       - ./analisis/notebooks:/home/analista/notebooks
       - ./analisis/contexto:/home/analista/contexto:ro
       - ./analisis/salida:/home/analista/salida
-      - ./simulacion:/home/analista/solucionario:ro
+      - ./simulacion:/home/analista/solucionario   # el notebook del ataque escribe aquí su solucionario
     user: "${UID:-1000}:${GID:-1000}"
     networks: [lab]
     restart: unless-stopped
