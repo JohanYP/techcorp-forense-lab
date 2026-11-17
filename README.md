@@ -216,12 +216,16 @@ Todas en **JSON Lines** (un evento por línea), con la hora en **UTC** (`...Z`).
 
 ## El notebook forense (`analisis/notebooks/analisis_forense.ipynb`)
 
+El hilo conductor son las **expresiones regulares**: convierten los registros de texto en datos (`regexp_extract`, `regexp_matches`, `regexp_replace` en DuckDB y `re` en Python). Cada vez que se usa una, un recuadro «Expresión regular en uso» la explica pieza por pieza y la prueba sobre la evidencia.
+
 | Sección | Técnica | Figura para la presentación |
 |---|---|---|
+| 0.1 Expresiones regulares | La herramienta central del caso: chuleta de piezas y visor `ver_regex()` que resalta lo que atrapa cada patrón en líneas reales de la evidencia | — |
 | 1. Preservación | SHA-256 de cada archivo, cadena de custodia, montaje en solo lectura | — |
 | 2. Ingesta Big Data | DuckDB `read_json` con esquema explícito, data lake Parquet/ZSTD particionado, comparación de tamaño y velocidad | — |
 | 3. Línea base | Volumen por día y hora, códigos de estado, endpoints | `fig01_mapa_calor_actividad.png` |
 | 4. Anomalías | Perfil por IP, **z robusto** (mediana/MAD) + **Isolation Forest**, ráfagas de 404, respuestas fuera del p99, **triage** contra el registro de cambios | `fig02_bytes_enviados.png`, `fig03_ips_anomalas.png` |
+| 4.6 Firmas con regex | Siete firmas (`regexp_matches`) sobre toda la semana: las generales atrapan ruido, las específicas solo al atacante, las de inyección SQL y `../` dan cero | `fig08_firmas_regex.png` |
 | 5. Vector de entrada | Subidas de archivo anómalas en la página de la foto, **ASOF JOIN** con las caídas de Apache, URI nuevas, evento FIM | — |
 | 6. Post-explotación | Decodificación Base64 de las órdenes de la webshell y mapeo a **MITRE ATT&CK** | — |
 | 7. Web ↔ BD | `request_id` extraído del SQL (*sqlcommenter*), uso anómalo de `techcorp_admin`, **registros exactos expuestos** y validación por **reproducción** de las consultas con `forense_ro` | `fig04_bd_filas_por_cuenta.png`, `fig05_clientes_expuestos.png` |
